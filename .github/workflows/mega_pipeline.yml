@@ -28,8 +28,8 @@ jobs:
 
       - name: Run Universal Extractor
         run: |
-          # Agar aapki script kisi aur folder mein hai toh path theek kar lein (e.g., python scripts/uni_master.py)
-          python uni_master.py
+          # Yahan path theek kar diya gaya hai
+          python scripts/uni.py
 
       - name: Install Rclone
         run: |
