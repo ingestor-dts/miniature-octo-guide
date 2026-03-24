@@ -1,0 +1,46 @@
+name: IG Extractor to Mega Pipeline
+
+on:
+  # Jab bhi datasets folder mein koi nayi file push hogi, yeh khud chalega
+  push:
+    paths:
+      - 'datasets/**.json'
+  # Manual chalane ke liye button dega
+  workflow_dispatch:
+
+jobs:
+  extract-and-upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run Universal Extractor
+        run: |
+          # Agar aapki script kisi aur folder mein hai toh path theek kar lein (e.g., python scripts/uni_master.py)
+          python uni_master.py
+
+      - name: Install Rclone
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+
+      - name: Setup Rclone Config
+        run: |
+          mkdir -p ~/.config/rclone
+          echo "${{ secrets.RCLONE_CONFIG_DATA }}" > ~/.config/rclone/rclone.conf
+
+      - name: Upload to Mega via Rclone
+        run: |
+          # Upload ./ig_downloads folder to Mega remote 'vfx' into 'Instagram_Backup' folder
+          rclone copy ./ig_downloads vfx:Instagram_Backup -v --stats-one-line --transfers 20
