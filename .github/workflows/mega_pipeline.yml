@@ -1,16 +1,18 @@
-name: IG Extractor to Mega Pipeline
+name: IG Extractor & Auto-Cleanup Pipeline
 
 on:
-  # Jab bhi datasets folder mein koi nayi file push hogi, yeh khud chalega
+  # Jab bhi datasets folder mein koi nayi JSON file aayegi, yeh khud chalega
   push:
     paths:
       - 'datasets/**.json'
-  # Manual chalane ke liye button dega
   workflow_dispatch:
 
 jobs:
-  extract-and-upload:
+  extract-upload-cleanup:
     runs-on: ubuntu-latest
+    # Zaroori permission: GitHub bot ko files delete karne ki ijazat dena
+    permissions:
+      contents: write  
 
     steps:
       - name: Checkout Repository
@@ -28,7 +30,7 @@ jobs:
 
       - name: Run Universal Extractor
         run: |
-          # Yahan path theek kar diya gaya hai
+          # Aapki universal script chalegi
           python scripts/uni.py
 
       - name: Install Rclone
@@ -40,7 +42,40 @@ jobs:
           mkdir -p ~/.config/rclone
           echo "${{ secrets.RCLONE_CONFIG_DATA }}" > ~/.config/rclone/rclone.conf
 
-      - name: Upload to Mega via Rclone
+      - name: Zip Media and Datasets Together
         run: |
-          # Upload ./ig_downloads folder to Mega remote 'vfx' into 'Instagram_Backup' folder
-          rclone copy ./ig_downloads vfx:Instagram_Backup -v --stats-one-line --transfers 20
+          echo "📦 Zipping Extracted Media and Original Datasets..."
+          # Har backup ka ek unique naam hoga time ke hisaab se
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          ZIP_NAME="IG_Full_Backup_${TIMESTAMP}.zip"
+          
+          # ig_downloads aur datasets dono ko ek hi zip mein pack kar raha hai
+          zip -r -q $ZIP_NAME ./ig_downloads ./datasets
+          
+          # Zip ka naam agle step ke liye save kar raha hai
+          echo "ZIP_FILE=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Upload to Mega via Rclone (Ultra Fast)
+        run: |
+          echo "☁️ Uploading to Mega..."
+          # Transfers aur checkers ko 32 kar diya gaya hai for maximum speed
+          rclone copy ./${{ env.ZIP_FILE }} vfx:Instagram_Backup -v --stats-one-line --transfers 32 --checkers 32
+
+      - name: Auto-Cleanup (Delete processed files from Public Repo)
+        run: |
+          echo "🧹 Cleaning up public repository..."
+          
+          # GitHub bot ko configure karna taake wo delete commit kar sake
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          
+          # Datasets folder ke andar se saari files remove karein
+          git rm -r datasets/* || true
+          
+          # Ek khali .keep file daalein taake datasets folder structure delete na ho
+          touch datasets/.keep
+          git add datasets/.keep
+          
+          # Commit aur push karna. '[skip ci]' isliye likha hai taake delete hone par pipeline dobara na chalne lag jaye
+          git commit -m "Auto-cleanup: Removed processed datasets to keep repo secure [skip ci]" || echo "Nothing to commit"
+          git push
